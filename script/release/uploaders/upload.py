@@ -13,7 +13,7 @@ from struct import Struct
 import sys
 
 sys.path.append(
-  os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + "/../.."))
+    os.path.abspath(f"{os.path.dirname(os.path.abspath(__file__))}/../.."))
 
 from zipfile import ZipFile
 from lib.config import PLATFORM, get_target_arch, \
@@ -23,7 +23,7 @@ from lib.util import get_electron_branding, execute, get_electron_version, \
                      SRC_DIR, ELECTRON_DIR, TS_NODE
 
 
-ELECTRON_VERSION = 'v' + get_electron_version()
+ELECTRON_VERSION = f'v{get_electron_version()}'
 
 PROJECT_NAME = get_electron_branding()['project_name']
 PRODUCT_NAME = get_electron_branding()['product_name']
@@ -59,11 +59,8 @@ def main():
     sys.stderr.flush()
     return 1
 
-  tag_exists = False
   release = get_release(args.version)
-  if not release['draft']:
-    tag_exists = True
-
+  tag_exists = not release['draft']
   if not args.upload_to_storage:
     assert release['exists'], \
           'Release does not exist; cannot upload to GitHub!'
@@ -93,11 +90,7 @@ def main():
 
     dsym_snapshot_zip = os.path.join(OUT_DIR, DSYM_SNAPSHOT_NAME)
     shutil.copy2(os.path.join(OUT_DIR, 'dsym-snapshot.zip'), dsym_snapshot_zip)
-    upload_electron(release, dsym_snapshot_zip, args)    
-  elif PLATFORM == 'win32':
-    pdb_zip = os.path.join(OUT_DIR, PDB_NAME)
-    shutil.copy2(os.path.join(OUT_DIR, 'pdb.zip'), pdb_zip)
-    upload_electron(release, pdb_zip, args)
+    upload_electron(release, dsym_snapshot_zip, args)
   elif PLATFORM == 'linux':
     debug_zip = os.path.join(OUT_DIR, DEBUG_NAME)
     shutil.copy2(os.path.join(OUT_DIR, 'debug.zip'), debug_zip)
@@ -118,6 +111,10 @@ def main():
       abi_headers_zip = os.path.join(OUT_DIR, 'libcxxabi_headers.zip')
       upload_electron(release, abi_headers_zip, args)
 
+  elif PLATFORM == 'win32':
+    pdb_zip = os.path.join(OUT_DIR, PDB_NAME)
+    shutil.copy2(os.path.join(OUT_DIR, 'pdb.zip'), pdb_zip)
+    upload_electron(release, pdb_zip, args)
   # Upload free version of ffmpeg.
   ffmpeg = get_zip_name('ffmpeg', ELECTRON_VERSION)
   ffmpeg_zip = os.path.join(OUT_DIR, ffmpeg)
@@ -296,9 +293,8 @@ def _zero_zip_date_time(zip_):
   offset = 0
 
   mm = mmap.mmap(zip_.fileno(), 0)
-  while offset < archive_size:
-    if signature_struct.unpack_from(mm, offset) != (FILE_HEADER_SIGNATURE,):
-      break
+  while offset < archive_size and signature_struct.unpack_from(
+         mm, offset) == (FILE_HEADER_SIGNATURE, ):
     values = list(local_file_header_struct.unpack_from(mm, offset))
     compressed_size, _, name_length, extra_field_length = values[7:11]
     # reset last_mod_time
@@ -312,9 +308,8 @@ def _zero_zip_date_time(zip_):
                                           compressed_size)
     offset += compressed_size + extra_field_length
 
-  while offset < archive_size:
-    if signature_struct.unpack_from(mm, offset) != (CENDIR_HEADER_SIGNATURE,):
-      break
+  while offset < archive_size and signature_struct.unpack_from(
+         mm, offset) == (CENDIR_HEADER_SIGNATURE, ):
     values = list(central_directory_header_struct.unpack_from(mm, offset))
     file_name_length, extra_field_length, file_comment_length = values[10:13]
     # reset last_mod_time
@@ -357,8 +352,7 @@ def upload_electron(release, file_path, args):
 
 
 def upload_io_to_github(release, filename, filepath, version):
-  print('Uploading %s to GitHub' % \
-      (filename))
+  print(f'Uploading {filename} to GitHub')
   script_path = os.path.join(
     ELECTRON_DIR, 'script', 'release', 'uploaders', 'upload-to-github.ts')
   execute([TS_NODE, script_path, filepath, filename, str(release['id']),
@@ -366,7 +360,7 @@ def upload_io_to_github(release, filename, filepath, version):
 
 
 def upload_sha256_checksum(version, file_path, key_prefix=None):
-  checksum_path = '{}.sha256sum'.format(file_path)
+  checksum_path = f'{file_path}.sha256sum'
   if key_prefix is None:
     key_prefix = 'checksums-scratchpad/{0}'.format(version)
   sha256 = hashlib.sha256()
@@ -375,7 +369,7 @@ def upload_sha256_checksum(version, file_path, key_prefix=None):
 
   filename = os.path.basename(file_path)
   with open(checksum_path, 'w') as checksum:
-    checksum.write('{} *{}'.format(sha256.hexdigest(), filename))
+    checksum.write(f'{sha256.hexdigest()} *{filename}')
   store_artifact(os.path.dirname(checksum_path), key_prefix, [checksum_path])
 
 
@@ -383,8 +377,7 @@ def get_release(version):
   script_path = os.path.join(
     ELECTRON_DIR, 'script', 'release', 'find-github-release.js')
   release_info = execute(['node', script_path, version])
-  release = json.loads(release_info)
-  return release
+  return json.loads(release_info)
 
 if __name__ == '__main__':
   sys.exit(main())
